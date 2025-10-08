@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Asisten Reservasi AI - Dolan Sawah</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+    <style>
+        :root { --primary: #2a9d8f; --primary-dark: #264653; }
+        body { font-family: 'Poppins', sans-serif; margin: 0; background-color: #f5f5f5; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+        .chat-container { width: 90%; max-width: 600px; height: 80vh; max-height: 700px; background: white; border-radius: 12px; box-shadow: 0 5px 20px rgba(0,0,0,0.1); display: flex; flex-direction: column; overflow: hidden; }
+        .chat-header { background: linear-gradient(135deg, var(--primary-dark), var(--primary)); color: white; padding: 15px 20px; text-align: center; font-weight: 600; font-size: 1.2rem; }
+        .chat-box { flex-grow: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 15px; }
+        .message { padding: 10px 15px; border-radius: 18px; max-width: 80%; line-height: 1.5; word-wrap: break-word; }
+        .user-message { background-color: var(--primary); color: white; align-self: flex-end; border-bottom-right-radius: 4px; }
+        .bot-message { background-color: #e9ecef; color: var(--primary-dark); align-self: flex-start; border-bottom-left-radius: 4px; }
+        .input-area { display: flex; padding: 15px; border-top: 1px solid #eee; }
+        #userInput { flex-grow: 1; border: 1px solid #ddd; padding: 10px 15px; border-radius: 20px; font-size: 1rem; margin-right: 10px; }
+        #sendButton { background-color: var(--primary); color: white; border: none; padding: 10px 20px; border-radius: 20px; cursor: pointer; font-weight: 500; }
+        #sendButton:disabled { background-color: #6c757d; cursor: not-allowed; }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <div class="chat-header">Asisten Reservasi Dolan Sawah</div>
+        <div class="chat-box" id="chatBox"><div class="message bot-message">Halo! Ada yang bisa saya bantu untuk reservasi di Dolan Sawah?</div></div>
+        <div class="input-area"><input type="text" id="userInput" placeholder="Ketik pesan Anda..."><button id="sendButton">Kirim</button></div>
+    </div>
+    <script type="module">
+        const firebaseConfig = {
+            apiKey: "AIzaSyA_c1tU70FM84Qi_f_aSaQ-YVLo_18lCkI",
+            authDomain: "reservasi-dolan-sawah.firebaseapp.com",
+            projectId: "reservasi-dolan-sawah",
+            storageBucket: "reservasi-dolan-sawah.appspot.com",
+            messagingSenderId: "213151400721",
+            appId: "1:213151400721:web:e51b0d8cdd24206cf682b0"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+
+        // URL ini akan otomatis menunjuk ke perantara aman kita di Vercel
+        const CLOUD_FUNCTION_URL = "/api/chat"; 
+
+        const chatBox = document.getElementById('chatBox');
+        const userInput = document.getElementById('userInput');
+        const sendButton = document.getElementById('sendButton');
+
+        sendButton.addEventListener('click', sendMessage);
+        userInput.addEventListener('keydown', (event) => { if (event.key === 'Enter') sendMessage(); });
+
+        async function sendMessage() {
+            const userText = userInput.value.trim();
+            if (userText === "") return;
+
+            appendMessage(userText, 'user');
+            userInput.value = "";
+            setLoading(true);
+
+            try {
+                const menuData = await getMenuFromFirebase();
+                const menuListString = menuData.map(menu => `- ${menu.name}: ${menu.details.join(', ')}`).join('\\n');
+                
+                const finalPrompt = `Anda adalah asisten restoran "Dolan Sawah". Jawab dengan ramah. Data menu: \\n${menuListString}\\n\\nPertanyaan: "${userText}"`;
+                
+                const response = await fetch(CLOUD_FUNCTION_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prompt: finalPrompt })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Error dari server: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                appendMessage(data.message, 'bot');
+
+            } catch (error) {
+                console.error("Error:", error);
+                appendMessage("Maaf, terjadi gangguan. Coba beberapa saat lagi.", 'bot');
+            } finally { 
+                setLoading(false); 
+            }
+        }
+
+        async function getMenuFromFirebase() {
+            const snapshot = await db.collection('menus').get();
+            const menus = [];
+            snapshot.forEach(doc => menus.push({ name: doc.id, details: doc.data().details }));
+            return menus;
+        }
+
+        function appendMessage(text, sender) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${sender}-message`;
+            messageDiv.textContent = text;
+            chatBox.appendChild(messageDiv);
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+        
+        function setLoading(isLoading) {
+            sendButton.disabled = isLoading;
+            sendButton.textContent = isLoading ? '...' : 'Kirim';
+        }
+    </script>
+</body>
+</html>
